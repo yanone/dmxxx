@@ -11,9 +11,7 @@ import time, random, math, sys, os
 #sys.stderr = sys.stdout
 
 APPNAME = 'DMXXX'
-DMXREFRESHRATE = 50 #ms
 #AUPFILE = '/Users/yanone/Projekte/Antithesis/11 - Produktion/DMX Light Show/Neon Natives.aup'
-AUPFILE = '/Users/yanone/Projekte/Antithesis/11 - Produktion/DMX Light Show/Pyramide.aup'
 
 
 class YN_NSImageView(NSImageView):
@@ -37,13 +35,14 @@ class DMXChannelImageView(ImageView):
 #		print event.deltaY()
 		if event.deltaY() > 0:
 #			print '+1'
-			self.setValue(self.value + 1, saveToPreferences = True)
+			self.setValue(self.value + 1, saveToPreferences = True, normalize = False, informAboutValue = True)
 		else:
 #			print '-1'
-			self.setValue(self.value - 1, saveToPreferences = True)
+			self.setValue(self.value - 1, saveToPreferences = True, normalize = False, informAboutValue = True)
 
 	def mouseEntered_(self, event):
-		print self.channel
+		self.mouseEntered = True
+		self.drawValue()
 
 	def mouseExited_(self, event):
 		self.mouseEntered = False
@@ -57,7 +56,7 @@ class DMXChannelImageView(ImageView):
 #		screenheight = self.window.w.getNSWindow().screen().frame().size.height
 		mouselocation = self.window.w.getNSWindow().mouseLocationOutsideOfEventStream().y
 		y = int(math.ceil(mouselocation - selftop) - 1)
-		self.setValue(y, saveToPreferences = True)
+		self.setValue(y, saveToPreferences = True, normalize = False, informAboutValue = True)
 
 	def setInitValues(self, window, channel, value):
 		self.window = window
@@ -66,18 +65,20 @@ class DMXChannelImageView(ImageView):
 		self.value = value
 		self.width = self.getPosSize()[2]
 		self.height = self.getPosSize()[3]
+		self.min = 0
+		self.max = 255
+
+		# Priority
+		self.attack = 200
+		self.release = 2000
+		self.priorityValue = None
+		self.priorityValueTime = None
+
+	def setPriorityValue():
 
 	def drawOnWindow(self):
 		
-		if self.mouseEntered:
-			self.backgroundcolor = HextoRGB('D5D5D5')
-		else:
-			self.backgroundcolor = HextoRGB('959595')
-		
-		if self.channel % 5 == 0:
-			self.backgroundcolor = HextoRGB('A5A5A5')
 		if self.channel % 10 == 0:
-			self.backgroundcolor = HextoRGB('858585')
 
 			# Label
 			if self.channel > 0:
@@ -89,7 +90,7 @@ class DMXChannelImageView(ImageView):
 		self.drawValue()
 		
 		
-	def setValue(self, value, saveToPreferences = False):
+	def setValue(self, value, saveToPreferences = False, informAboutValue = False, normalize = True):
 		
 		# normaliuze
 		if value < 0:
@@ -99,14 +100,23 @@ class DMXChannelImageView(ImageView):
 		
 		if self.value != value:
 			self.value = value
+			
+			
+			#NormalizeMinMax(source_floor, source_ceiling, target_floor, target_ceiling, value):
+			
+			if normalize:
+				self.value = int(NormalizeMinMax(0, 255, self.min, self.max, self.value))
+
 			if self.window.w.dmx:
 				self.window.w.dmx.setValue(self.channel, self.value)
 			self.drawValue()
-			self.window.text('Channel %s Value %s' % (self.channel, self.value))
+			
+			if informAboutValue:
+				self.window.text('Channel %s Value %s' % (self.channel, self.value))
 
 			if saveToPreferences:
 				if self.value > 0:
-					self.window.preferences.set('DMX Channel %s' % (self.channel), self.value)
+					self.window.preferences.put('DMX Channel %s' % (self.channel), self.value)
 				elif self.value == 0:
 					self.window.preferences.delete('DMX Channel %s' % (self.channel))
 
@@ -116,33 +126,18 @@ class DMXChannelImageView(ImageView):
 
 		if message:
 			print message
-		image = NSImage.alloc().initWithSize_((self.width, self.height))
-		image.lockFocus()
 		
-#		NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 1.0, 1.0, 1.0).set()
-#		image.setBackgroundColor_(NSColor.colorWithCalibratedRed_green_blue_alpha_(self.backgroundcolor[0], self.backgroundcolor[1], self.backgroundcolor[2], 1.0))
+		if self.mouseEntered:
+			self.setImage(imageObject=self.window.channelImages[1][self.value])
+		else:
+			if self.channel % 10 == 0:
+				self.setImage(imageObject=self.window.channelImages[2][self.value])
+			elif self.channel % 5 == 0:
+				self.setImage(imageObject=self.window.channelImages[1][self.value])
+			else:
+				self.setImage(imageObject=self.window.channelImages[0][self.value])
+		
 
-		NSColor.colorWithCalibratedRed_green_blue_alpha_(self.backgroundcolor[0], self.backgroundcolor[1], self.backgroundcolor[2], 1.0).set()
-		path = NSBezierPath.bezierPath()
-		path.moveToPoint_((0, 0))
-		path.lineToPoint_((0, self.height))
-		path.lineToPoint_((self.width, self.height))
-		path.lineToPoint_((self.width, 0))
-		path.lineToPoint_((0, 0))
-		path.fill()
-
-		NSColor.colorWithCalibratedRed_green_blue_alpha_(self.foregroundcolor[0], self.foregroundcolor[1], self.foregroundcolor[2], 1.0).set()
-		path = NSBezierPath.bezierPath()
-		path.moveToPoint_((0, 1))
-		path.lineToPoint_((0, self.value + 1))
-		path.lineToPoint_((self.width, self.value + 1))
-		path.lineToPoint_((self.width, 1))
-		path.lineToPoint_((0, 1))
-		path.fill()
-		
-		image.unlockFocus()
-		self.setImage(imageObject=image)
-		
 
 
 ################################################################################################################
@@ -219,10 +214,10 @@ class AUPDMXCommand(object):
 
 			newValue = InterpolateMany(self.values, p)[0]
 
-		elif self.endTime <= t <= self.endTime + 1 * DMXREFRESHRATE / 1000.0:
+		elif self.endTime <= t <= self.endTime + 1 * self.refreshRate / 1000.0:
 			newValue = self.values[-1]
 
-		elif self.startTime - 1 * DMXREFRESHRATE / 1000.0 <= t <= self.startTime:
+		elif self.startTime - 1 * self.refreshRate / 1000.0 <= t <= self.startTime:
 			newValue = self.values[0]
 
 
@@ -283,33 +278,41 @@ class DMXObserver(threading.Thread):
 		while True:
 
 
-			if self.window.sound.is_playing():
+			if self.window.playStatus == 'playing':
+				
+				for generator in self.window.generators:
+					generator.act(self.window)
+				
+			if self.window.sound:
+				if self.window.sound.is_playing():
 
-				pool = NSAutoreleasePool.alloc().init()
-				t = self.window.sound.currentTime()
+					pool = NSAutoreleasePool.alloc().init()
+					t = self.window.sound.currentTime()
 			
-				if t > 0.0:
+					if t > 0.0:
 				
-					for channel in self.window.aup.dmxChannels:
-						for command in channel.commands:
-							level = command.valueAtT(t)
-							if level != None:
-	#							print command.parent.channel, level
-								self.window.w.dmxChannels[command.parent.channel - 1].setValue(level)
+						for channel in self.window.aup.dmxChannels:
+							for command in channel.commands:
+								level = command.valueAtT(t)
+								if level != None:
+		#							print command.parent.channel, level
+									self.window.channels[command.parent.channel - 1].setValue(level)
 					
-					if self.window.w.dmx:
-						self.window.w.dmx.send()
 
-					self.window.w.musicSlider.set(t)
+						self.window.w.musicSlider.set(t)
 				
-					timecode = str(t).split('.')[0] + ':' + str(t).split('.')[1][:2]
-					self.window.w.timeCode.set(timecode)
-				else:
-					self.window.stopMusicButtonCallback()
+						timecode = str(t).split('.')[0] + ':' + str(t).split('.')[1][:2]
+						self.window.w.timeCode.set(timecode)
+					else:
+						self.window.stopMusicButtonCallback()
 
-				del pool
+					del pool
 
-			time.sleep(DMXREFRESHRATE / 1000.0)
+			#if self.window.w.dmx:
+			self.window.w.dmx.send()
+
+			time.sleep(self.window.refreshRate / 1000.0)
+			self.window.increment += 1
 			
 
 	def stop(self):
@@ -319,10 +322,28 @@ class DMXObserver(threading.Thread):
 ####################################################################################################
 
 
+class Sine(object):
+	def __init__(self, channel, duration):
+		import math
+		self.channel = channel
+		self.duration = duration
+	
+	def act(self, window):
+		
+		
+		y = math.sin(math.radians(window.increment * window.fps * 1 / (float(self.duration) / 1000.0)))# * window.refreshRate / self.duration))# * self.duration / window.refreshRate))
+		level = int((y + 1) * .5 * 255)
+		window.channels[self.channel - 1].setValue(level)
+		
+#		print window.increment
+
+
 
 class DMXXXWindow(object):
 
-	def __init__(self):
+	def __init__(self, refreshRate):
+		self.refreshRate = refreshRate
+		self.fps = 1000.0 / self.refreshRate
 		self.w = Window((1280, 700), "DMXXX", closable=True)
 		#self.w.myButton = Button((10, 10, -10, 20), "My Button")
 		#self.w.myTextBox = TextBox((10, 40, -10, 17), "My Text Box")
@@ -331,15 +352,57 @@ class DMXXXWindow(object):
 
 		self.preferences = Preferences('de.yanone.DMXXX')
 
+		self.playStatus = 'stopped'
+		self.aupFilePath = ''
+		self.aup = None
+		self.sound = None
+		
+		self.generators = []
 
-
+		self.increment = 0
 
 		# Set up channels
-		self.w.dmxChannels = []
+		self.channels = []
 #		for i in range(512):
 #			newChannel = DMXChannelImageView((x+1, y, self.width, self.height))
 #			newChannel.setInitValues(i+1, 0)
-#			self.w.dmxChannels.append(newChannel)
+#			self.channels.append(newChannel)
+
+
+		width = 4
+		height = 256
+		self.channelImages = [[], [], []]
+		backgroundColors = [HextoRGB('D5D5D5'), HextoRGB('A5A5A5'), HextoRGB('858585')]
+		foregroundcolor = HextoRGB('e3004f')
+
+		for t in range(3):
+			for i in range(256):
+				image = NSImage.alloc().initWithSize_((width, height))
+				image.lockFocus()
+
+				NSColor.colorWithCalibratedRed_green_blue_alpha_(backgroundColors[t][0], backgroundColors[t][1], backgroundColors[t][2], 1.0).set()
+				path = NSBezierPath.bezierPath()
+				path.moveToPoint_((0, 0))
+				path.lineToPoint_((0, height))
+				path.lineToPoint_((width, height))
+				path.lineToPoint_((width, 0))
+				path.lineToPoint_((0, 0))
+				path.fill()
+
+				NSColor.colorWithCalibratedRed_green_blue_alpha_(foregroundcolor[0], foregroundcolor[1], foregroundcolor[2], 1.0).set()
+				path = NSBezierPath.bezierPath()
+				path.moveToPoint_((0, 1))
+				path.lineToPoint_((0, i + 1))
+				path.lineToPoint_((width, i + 1))
+				path.lineToPoint_((width, 1))
+				path.lineToPoint_((0, 1))
+				path.fill()
+		
+				image.unlockFocus()
+				self.channelImages[t].append(image)
+
+
+
 		
 		for i in range(512):
 			if i < 256:
@@ -351,24 +414,21 @@ class DMXXXWindow(object):
 
 			newChannel = DMXChannelImageView((x+1, y, 4, 256))
 			newChannel.setInitValues(self, i+1, 0)
-			self.w.dmxChannels.append(newChannel)
-			self.w.dmxChannels[i].drawOnWindow()
+			self.channels.append(newChannel)
+			self.channels[i].drawOnWindow()
 			
 
 		# Precalculate DMX values
-		dmxInitValues = {}
+		self.dmxInitValues = {}
 		for i in range(512):
 			valueFromPreferences = self.preferences.get('DMX Channel %s' % (i+1))
 			if valueFromPreferences:
-				dmxInitValues[i+1] = valueFromPreferences
+				self.dmxInitValues[i+1] = valueFromPreferences
 
-		self.aup = AUP(AUPFILE)
-		for channel in self.aup.dmxChannels:
-			dmxInitValues[channel.channel] = channel.startValue()
 		
 		
 		try:
-			self.w.dmx = DMX('/dev/cu.usbserial-ENVVVCOF', dmxInitValues)
+			self.w.dmx = DMX('/dev/cu.usbserial-ENVVVCOF', self.dmxInitValues)
 			self.text('DMX USB device found')
 		except:
 			self.w.dmx = None
@@ -380,7 +440,7 @@ class DMXXXWindow(object):
 			valueFromPreferences = self.preferences.get('DMX Channel %s' % (i+1))
 			if valueFromPreferences:
 				#print valueFromPreferences, type(valueFromPreferences)
-				self.w.dmxChannels[i].setValue(valueFromPreferences)
+				self.channels[i].setValue(valueFromPreferences)
 		
 		if self.w.dmx:
 			self.w.dmx.send()
@@ -401,16 +461,25 @@ class DMXXXWindow(object):
 		self.dmxObserver = DMXObserver(self)
 		self.dmxObserver.start()
 
+	def loadAUPFile(self, filePath):
+		self.aupFilePath = filePath
+		self.aup = AUP(self.aupFilePath)
+		for channel in self.aup.dmxChannels:
+			self.dmxInitValues[channel.channel] = channel.startValue()
+
 	def loadMusicButtonCallback(self, sender = None):
 		
 		self.playStatus = 'stopped'
-		self.w.setTitle(APPNAME + ' - ' + os.path.basename(AUPFILE))
-		self.aup = AUP(AUPFILE)
-		self.sound = sound(self.aup.waveTracks[0].audioTrack)
+		if self.aupFilePath:
+			self.w.setTitle(APPNAME + ' - ' + os.path.basename(self.aupFilePath))
+
+			self.aup = AUP(self.aupFilePath)
+			self.sound = sound(self.aup.waveTracks[0].audioTrack)
 
 		self.stopMusicButtonCallback()
 		self.w.musicSlider.setMinValue(0)
-		self.w.musicSlider.setMaxValue(self.aup.waveTracks[0].lengthInSeconds)
+		if self.aup:
+			self.w.musicSlider.setMaxValue(self.aup.waveTracks[0].lengthInSeconds)
 		self.resetAllChannels()
 
 	def text(self, string):
@@ -418,18 +487,21 @@ class DMXXXWindow(object):
 	
 	def playMusicButtonCallback(self, sender = None):
 		self.loadMusicButtonCallback()
-		self.sound.play()
+		if self.sound:
+			self.sound.play()
 		self.playStatus = 'playing'
 
 	def musicSliderCallBack(self, sender):
-		self.sound.setCurrentTime(sender.get())
+		if self.sound:
+			self.sound.setCurrentTime(sender.get())
 
 	def pauseMusicButtonCallback(self, sender = None):
 		pass
 
 	def stopMusicButtonCallback(self, sender = None):
 		if self.playStatus == 'playing':
-			self.sound.stop()
+			if self.sound:
+				self.sound.stop()
 			self.playStatus = 'stopped'
 		self.w.timeCode.set('0:00')
 		self.resetAllChannels()
@@ -445,9 +517,10 @@ class DMXXXWindow(object):
 		self.resetAllChannels()
 
 	def resetAllChannels(self):
-		for channel in self.aup.dmxChannels:
-			#print channel.channel, channel.startValue()
-			self.w.dmxChannels[channel.channel-1].setValue(channel.startValue())
+		if self.aup:
+			for channel in self.aup.dmxChannels:
+				#print channel.channel, channel.startValue()
+				self.channels[channel.channel-1].setValue(channel.startValue())
 
 	def eventHandler(self, event):
 		loc = NSEvent.mouseLocation()
@@ -458,15 +531,24 @@ class DMXXXWindow(object):
 #			print self.window.getPosSize()
 		print loc.x, loc.y
 		
-#		for dmxChannel in self.w.dmxChannels:
+#		for dmxChannel in self.channels:
 #			
 #			in_x = loc.x > dmxChannel.window.getPosSize()[0] + dmxChannel.dmxChannelSlider.getPosSize()[0] and loc.x < dmxChannel.window.getPosSize()[0] + dmxChannel.dmxChannelSlider.getPosSize()[0] + dmxChannel.width + 1
 #			in_y = dmxChannel.window.getPosSize()[1] + dmxChannel.dmxChannelSlider.getPosSize()[1] < loc.y and loc.y < dmxChannel.window.getPosSize()[1] + dmxChannel.dmxChannelSlider.getPosSize()[1] + dmxChannel.height + 1
 #			if in_x and in_y:
 #				print dmxChannel.channel, loc.x, loc.y
 			
-#			if self.window.getPosSize()[0] + self.window.dmxChannelSlider%s
+#			if self.window.getPosSize()[0] + self.windochannelslider%s
 
 
 
-executeVanillaTest(DMXXXWindow)
+class DMXXX(object):
+	def __init__(self, refreshRate = 50):
+		self.refreshRate = 50
+		self.dmx = DMXXXWindow(refreshRate = self.refreshRate)
+		self.userInit()
+		
+
+	def userInit(self):
+		pass
+		
