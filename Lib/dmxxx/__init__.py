@@ -135,13 +135,14 @@ class Channel(object):
 	
 	def getValue(self, click, fps):
 		if self.generator:
-			return self.generator.getValue(click, fps)
+			return self.normalize(self.generator.getValue(click, fps))
 		elif self.value:
-			return self.value
+			return self.normalize(self.value)
 		else:
 			return 0
 
-
+	def normalize(self, value):
+		return NormalizeMinMax(0.0, 255.0, self.min, self.max, value)
 
 
 ############################################################################################################
