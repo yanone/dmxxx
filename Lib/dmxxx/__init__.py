@@ -45,6 +45,7 @@ class DMXXX(object):
 
 	def start(self):
 		if self.dmxDevice:
+			self.startTime = time.time()
 			self.text('Loop started.')
 			self.timer.start()
 
@@ -88,7 +89,7 @@ class Timer(threading.Thread):
 		while True:
 
 			for channel in self.dmxxx.scene.channels:
-				value = channel.getValue(self.dmxxx.click, self.dmxxx.fps)
+				value = channel.getValue(self.dmxxx.startTime)
 				self.dmxxx.channel(channel.channel).setValue(value)
 
 			self.dmxxx.send()
@@ -133,9 +134,9 @@ class Channel(object):
 		self.min = 0.0
 		self.max = 255.0
 	
-	def getValue(self, click, fps):
+	def getValue(self, startTime):
 		if self.generator:
-			return self.normalize(self.generator.getValue(click, fps))
+			return self.normalize(self.generator.getValue(startTime))
 		elif self.value:
 			return self.normalize(self.value)
 		else:
@@ -153,25 +154,8 @@ class Sine(object):
 	def __init__(self, duration, addDegrees = 0):
 		self.duration = duration
 		self.addDegrees = addDegrees
-	def getValue(self, click, fps):
-		y = math.sin(math.radians(self.addDegrees + (click * fps * 1 / (float(self.duration) / 1000.0))))
-		return (y + 1) * .5 * 255
 
-class InvertedSine(object):
-	def __init__(self, duration, addDegrees = 0):
-		self.duration = duration
-		self.addDegrees = addDegrees
-	def getValue(self, click, fps):
-		y = math.sin(math.radians(self.addDegrees + (click * fps * 1 / (float(self.duration) / 1000.0))))
-		return 255 - (y + 1) * .5 * 255
-
-
-
-
-
-
-
-
-
-
+	def getValue(self, startTime):
+		y = math.sin(math.radians(self.addDegrees + (float(time.time() - startTime) % (self.duration / 1000.0) / (self.duration / 1000.0) * 360.0)))
+		return (y + 1) * .5 * 255.0
 
