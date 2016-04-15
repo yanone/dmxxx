@@ -65,6 +65,11 @@ class DMXXX(object):
 			self.text('Loop stopped.')
 			self.timer.stop()
 			self.started = False
+
+	def dark(self):
+		for i in range(512):
+			self.channel(i+1).setValue(0)
+		self.send()
 	
 	def send(self):
 		if self.dmxDevice:
@@ -90,7 +95,7 @@ class deviceChannel(object):
 			
 #			print self.value
 			
-			self.dmxxx.dmxDevice.setValue(self.channel, int(self.value * 255))
+			self.dmxxx.dmxDevice.setValue(self.channel, round(self.value * 255))
 
 # Timed execution thread
 
@@ -106,8 +111,11 @@ class Timer(threading.Thread):
 		while True:
 
 			for channel in self.dmxxx.scene.channels:
-				value = channel.getValue(self.dmxxx.startTime)
-				self.dmxxx.channel(channel.channel).setValue(value)
+				
+				for useThisChannel, useThisValue in channel.getValue(self.dmxxx.startTime):
+					# Empty results from HR second channels
+					if useThisChannel != None and useThisValue != None:
+						self.dmxxx.channel(useThisChannel).setValue(useThisValue)
 
 			self.dmxxx.send()
 
@@ -131,7 +139,9 @@ class Scene(object):
 		self.name = name
 		self.channels = []
 		for i in range(512):
-			self.channels.append(Channel(i+1))
+			newChannel = Channel(i+1)
+			newChannel.scene = self
+			self.channels.append(newChannel)
 	
 	def channel(self, channel):
 		return self.channels[channel - 1]
@@ -144,15 +154,23 @@ class Scene(object):
 		
 
 class Channel(object):
-	def __init__(self, channel, initValue = None, generator = None):
+	def __init__(self, channel, initValue = None, generator = None, HR = False):
 		self.channel = channel
+		self.HR = HR
 		self.value = initValue
 		self.generator = generator
 		self.min = MIN
 		self.max = MAX
 		self.curveAdjust = 0
+		self.scene = None # appended by scene
 	
 	def getValue(self, startTime):
+		
+		# HR of previous channel
+		if self.channel > 1:
+			previousChannel = self.channel - 1
+			if self.scene.channels[previousChannel - 1].HR:
+				return [[None, None]]
 		
 		value = 0
 		
@@ -167,7 +185,19 @@ class Channel(object):
 		if self.curveAdjust:
 			value = self.adjustCurve(value)
 #		print 'after curveAdjust:', value
-		return value
+
+#		return [[self.channel, value]]
+		
+		if self.HR == False:
+			return [[self.channel, value]]
+		else:
+			### HQ
+
+			value1 = (value * 255 // 1.0) / 255.0
+			value2 = value * 255 % 1.0
+
+			return [[self.channel, value1], [self.channel + 1, value2]]
+			
 
 	def normalize(self, value):
 #		print 'NormalizeMinMax', MIN, MAX, self.min, self.max, value
