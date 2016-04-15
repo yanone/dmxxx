@@ -3,6 +3,7 @@
 
 from ynlib.dmx import DMX
 from ynlib.maths import Interpolate, InterpolateMany, NormalizeMinMax
+from ynlib.beziers import SplitCubicAtT, Point
 
 import time, random, math, sys, os
 
@@ -12,8 +13,16 @@ import time, random, math, sys, os
 
 ### Main DMX class
 
+
+MIN = 0.0
+MAX = 1.0
+
+
+
 class DMXXX(object):
 	def __init__(self, devicePath, fps = 20):
+		
+		self.started = False
 		
 		# DMX
 		self.channels = []
@@ -44,19 +53,24 @@ class DMXXX(object):
 		print string
 
 	def start(self):
-		if self.dmxDevice:
-			self.startTime = time.time()
-			self.text('Loop started.')
-			self.timer.start()
+		if not self.started:
+			if self.dmxDevice:
+				self.startTime = time.time()
+				self.text('Loop started.')
+				self.timer.start()
+				self.started = True
 
 	def stop(self):
 		if self.dmxDevice:
 			self.text('Loop stopped.')
 			self.timer.stop()
+			self.started = False
 	
 	def send(self):
 		if self.dmxDevice:
 			self.dmxDevice.send()
+		else:
+			raise Exception("No DMX device connected (in software)")
 
 	def channel(self, channel):
 		return self.channels[channel - 1]
@@ -73,7 +87,10 @@ class deviceChannel(object):
 	def setValue(self, value):
 		if value != self.value:
 			self.value = value
-			self.dmxxx.dmxDevice.setValue(self.channel, self.value)
+			
+#			print self.value
+			
+			self.dmxxx.dmxDevice.setValue(self.channel, int(self.value * 255))
 
 # Timed execution thread
 
@@ -131,19 +148,55 @@ class Channel(object):
 		self.channel = channel
 		self.value = initValue
 		self.generator = generator
-		self.min = 0.0
-		self.max = 255.0
+		self.min = MIN
+		self.max = MAX
+		self.curveAdjust = 0
 	
 	def getValue(self, startTime):
+		
+		value = 0
+		
 		if self.generator:
-			return self.normalize(self.generator.getValue(startTime))
+			value = self.normalize(self.generator.getValue(startTime))
+#			print 'generator:', value
+
 		elif self.value:
-			return self.normalize(self.value)
-		else:
-			return 0
+			value = self.normalize(self.value)
+
+#		print 'before curveAdjust:', value
+		if self.curveAdjust:
+			value = self.adjustCurve(value)
+#		print 'after curveAdjust:', value
+		return value
 
 	def normalize(self, value):
-		return NormalizeMinMax(0.0, 255.0, self.min, self.max, value)
+#		print 'NormalizeMinMax', MIN, MAX, self.min, self.max, value
+		return NormalizeMinMax(MIN, MAX, self.min, self.max, value)
+
+	def adjustCurve(self, value):
+		u"""\
+		Adjusts value to dimming brightness curve (set in Channel.curveAdjust from 1.0 (brighter) to -1.0 (darker)
+		"""
+
+		p1 = Point(MIN, self.min)
+		p4 = Point(MAX, self.max)
+		p2 = Interpolate(p1, p4, .3)
+		p3 = Interpolate(p1, p4, .7)
+
+		if self.curveAdjust > 0:
+			corner = Point(MIN, self.max)
+			p2 = Interpolate(p2, corner, self.curveAdjust)
+			p3 = Interpolate(p3, corner, self.curveAdjust)
+		elif self.curveAdjust < 0:
+			corner = Point(MAX, self.min)
+			p2 = Interpolate(p2, corner, -1 * self.curveAdjust)
+			p3 = Interpolate(p3, corner, -1 * self.curveAdjust)
+
+		t = float(value - self.min) / float(self.max - self.min)
+	
+		p = SplitCubicAtT(p1, p2, p3, p4, t)
+
+		return p[0][3].y
 
 
 ############################################################################################################
@@ -157,5 +210,6 @@ class Sine(object):
 
 	def getValue(self, startTime):
 		y = math.sin(math.radians(self.addDegrees + (float(time.time() - startTime) % (self.duration / 1000.0) / (self.duration / 1000.0) * 360.0)))
-		return (y + 1) * .5 * 255.0
+#		print 'y', (y + 1) * .5
+		return (y + 1) * .5
 
