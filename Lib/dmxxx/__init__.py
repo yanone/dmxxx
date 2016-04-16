@@ -20,9 +20,10 @@ MAX = 1.0
 
 
 class DMXXX(object):
-	def __init__(self, devicePath, fps = 20):
+	def __init__(self, devicePath, fps = 20, renderToFile = None):
 		
 		self.started = False
+		self.renderToFile = renderToFile
 		
 		# DMX
 		self.channels = []
@@ -30,7 +31,7 @@ class DMXXX(object):
 			self.channels.append(deviceChannel(self, i+1))
 		self.devicePath = devicePath
 		try:
-			self.dmxDevice = DMX(devicePath)
+			self.dmxDevice = DMX(devicePath, renderToFile = self.renderToFile)
 			self.text('DMX USB device found.')
 		except:
 			self.dmxDevice = None
@@ -66,14 +67,14 @@ class DMXXX(object):
 			self.timer.stop()
 			self.started = False
 
-	def dark(self):
+	def dark(self, renderToFile = True):
 		for i in range(512):
 			self.channel(i+1).setValue(0)
-		self.send()
+		self.send(renderToFile)
 	
-	def send(self):
+	def send(self, renderToFile = True):
 		if self.dmxDevice:
-			self.dmxDevice.send()
+			self.dmxDevice.send(renderToFile)
 		else:
 			raise Exception("No DMX device connected (in software)")
 
@@ -235,11 +236,11 @@ class Channel(object):
 
 class Sine(object):
 	def __init__(self, duration, addDegrees = 0):
-		self.duration = duration
+		self.duration = float(duration)
 		self.addDegrees = addDegrees
 
 	def getValue(self, startTime):
-		y = math.sin(math.radians(self.addDegrees + (float(time.time() - startTime) % (self.duration / 1000.0) / (self.duration / 1000.0) * 360.0)))
+		y = math.sin(math.radians(self.addDegrees + (float(time.time() - startTime) % (self.duration) / (self.duration) * 360.0)))
 #		print 'y', (y + 1) * .5
 		return (y + 1) * .5
 
