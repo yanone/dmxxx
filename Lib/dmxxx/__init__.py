@@ -113,7 +113,7 @@ class Timer(threading.Thread):
 
 			for channel in self.dmxxx.scene.channels:
 				
-				for useThisChannel, useThisValue in channel.getValue(self.dmxxx.startTime):
+				for useThisChannel, useThisValue in channel.getValue():
 					# Empty results from HR second channels
 					if useThisChannel != None and useThisValue != None:
 						self.dmxxx.channel(useThisChannel).setValue(useThisValue)
@@ -165,7 +165,7 @@ class Channel(object):
 		self.curveAdjust = 0
 		self.scene = None # appended by scene
 	
-	def getValue(self, startTime):
+	def getValue(self):
 		
 		# HR of previous channel
 		if self.channel > 1:
@@ -176,7 +176,7 @@ class Channel(object):
 		value = 0
 		
 		if self.generator:
-			value = self.normalize(self.generator.getValue(startTime))
+			value = self.normalize(self.generator.getValue())
 #			print 'generator:', value
 
 		elif self.value:
@@ -238,9 +238,10 @@ class Sine(object):
 	def __init__(self, duration, addDegrees = 0):
 		self.duration = float(duration)
 		self.addDegrees = addDegrees
+		self.startTime = time.time()
 
-	def getValue(self, startTime):
-		y = math.sin(math.radians(self.addDegrees + (float(time.time() - startTime) % (self.duration) / (self.duration) * 360.0)))
+	def getValue(self):
+		y = math.sin(math.radians(self.addDegrees + (float(time.time() - self.startTime) % (self.duration) / (self.duration) * 360.0)))
 #		print 'y', (y + 1) * .5
 		return (y + 1) * .5
 
